@@ -760,6 +760,58 @@ def api_verify_discord():
     valid = verify_discord_member(username)
     return jsonify({'valid': valid})
 
+# ─── PROFILE ─────────────────────────────────────────────────────────────────
+
+@app.route('/profile')
+@login_required
+def profile():
+    user = get_current_user()
+    return render_template('profile.html', user=user)
+
+@app.route('/profile/change-password', methods=['POST'])
+@login_required
+def change_password():
+    current = request.form.get('current_password', '')
+    new_pass = request.form.get('new_password', '')
+    confirm = request.form.get('confirm_password', '')
+
+    if new_pass != confirm:
+        flash('Новые пароли не совпадают.', 'error')
+        return redirect(url_for('profile'))
+
+    if len(new_pass) < 6:
+        flash('Пароль минимум 6 символов.', 'error')
+        return redirect(url_for('profile'))
+
+    conn = get_db()
+    user = conn.execute(
+        'SELECT * FROM users WHERE id=? AND password_hash=?',
+        (session['user_id'], hash_password(current))
+    ).fetchone()
+
+    if not user:
+        conn.close()
+        flash('Неверный текущий пароль.', 'error')
+        return redirect(url_for('profile'))
+
+    conn.execute('UPDATE users SET password_hash=? WHERE id=?',
+                 (hash_password(new_pass), session['user_id']))
+    conn.commit()
+    conn.close()
+    flash('Пароль успешно изменён!', 'success')
+    return redirect(url_for('profile'))
+
+@app.route('/profile/unlink-discord', methods=['POST'])
+@login_required
+def unlink_discord():
+    conn = get_db()
+    conn.execute('UPDATE users SET discord_id=NULL, discord_username=NULL, discord_avatar=NULL WHERE id=?',
+                 (session['user_id'],))
+    conn.commit()
+    conn.close()
+    flash('Discord аккаунт отвязан.', 'success')
+    return redirect(url_for('profile'))
+
 # ─── ERROR PAGES ─────────────────────────────────────────────────────────────
 
 @app.errorhandler(404)
